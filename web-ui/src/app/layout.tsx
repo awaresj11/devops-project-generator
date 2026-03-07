@@ -34,7 +34,6 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}
-        style={{ fontFamily: 'var(--font-inter), system-ui, sans-serif' }}
       >
         <ThemeProvider defaultTheme="dark">
           <TooltipProvider>{children}</TooltipProvider>
