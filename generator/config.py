@@ -19,50 +19,80 @@ class CIOption(Enum):
     GITHUB_ACTIONS = "github-actions"
     GITLAB_CI = "gitlab-ci"
     JENKINS = "jenkins"
+    AZURE_PIPELINES = "azure-pipelines"
+    GITLAB_RUNNERS = "gitlab-runners"
     NONE = "none"
+
+
+class PipelineOption(Enum):
+    """Pipeline framework options"""
+    NODEJS_TYPESCRIPT = "nodejs-typescript"
+    PYTHON = "python"
+    JAVA_MAVEN = "java-maven"
+    GO = "go"
+    DOCKER_MULTISTAGE = "docker-multistage"
+    TERRAFORM_MODULE = "terraform-module"
+    KUBERNETES_OPERATOR = "kubernetes-operator"
+    MICROSERVICE = "microservice"
 
 
 class InfraOption(Enum):
-    """Infrastructure tool options"""
-    TERRAFORM = "terraform"
-    CLOUDFORMATION = "cloudformation"
-    NONE = "none"
+    """Infrastructure pattern options"""
+    AWS_VPC_EKS = "aws-vpc-eks"
+    AZURE_VNET_AKS = "azure-vnet-aks"
+    GCP_VPC_GKE = "gcp-vpc-gke"
+    MULTICLOUD_TERRAFORM = "multicloud-terraform"
+    KUBERNETES_ONPREM = "kubernetes-onprem"
+    AWS_ECS_FARGATE = "aws-ecs-fargate"
+    ANSIBLE_AUTOMATION = "ansible-automation"
 
 
 class DeployOption(Enum):
-    """Deployment method options"""
-    VM = "vm"
-    DOCKER = "docker"
-    KUBERNETES = "kubernetes"
+    """Deployment strategy options"""
+    BLUE_GREEN = "blue-green"
+    CANARY = "canary"
+    ROLLING = "rolling"
+    GITOPS_ARGOCD = "gitops-argocd"
+    HELM_CHARTS = "helm-charts"
+    KUSTOMIZE = "kustomize"
+    SERVERLESS_LAMBDA = "serverless-lambda"
 
 
 class ObservabilityOption(Enum):
-    """Observability level options"""
-    LOGS = "logs"
-    LOGS_METRICS = "logs-metrics"
-    FULL = "full"
+    """Observability stack options"""
+    PROMETHEUS_GRAFANA = "prometheus-grafana"
+    ELK_STACK = "elk-stack"
+    DATADOG = "datadog"
+    JAEGER_PROMETHEUS = "jaeger-prometheus"
+    CLOUDWATCH = "cloudwatch"
+    NEW_RELIC = "new-relic"
 
 
 class SecurityOption(Enum):
-    """Security level options"""
-    BASIC = "basic"
-    STANDARD = "standard"
-    STRICT = "strict"
+    """Security framework options"""
+    NIST_CSF = "nist-csf"
+    CIS_BENCHMARKS = "cis-benchmarks"
+    ZERO_TRUST = "zero-trust"
+    SOC2 = "soc2"
+    GDPR = "gdpr"
+    HIPAA = "hipaa"
 
 
 @dataclass
 class ProjectConfig:
     """Configuration for DevOps project generation"""
     
+    project_name: str = "devops-project"
+    pipeline: Optional[str] = None
     ci: Optional[str] = None
     infra: Optional[str] = None
     deploy: Optional[str] = None
     envs: Optional[str] = None
     observability: Optional[str] = None
     security: Optional[str] = None
-    project_name: str = "devops-project"
     
     # Valid options (using enums for better type safety)
+    VALID_PIPELINE_OPTIONS = [option.value for option in PipelineOption]
     VALID_CI_OPTIONS = [option.value for option in CIOption]
     VALID_INFRA_OPTIONS = [option.value for option in InfraOption]
     VALID_DEPLOY_OPTIONS = [option.value for option in DeployOption]
@@ -86,6 +116,8 @@ class ProjectConfig:
         self.project_name = self._sanitize_project_name(self.project_name)
         
         # Validate and normalize other fields
+        if self.pipeline:
+            self.pipeline = self._normalize_option(self.pipeline, self.VALID_PIPELINE_OPTIONS, "Pipeline")
         if self.ci:
             self.ci = self._normalize_option(self.ci, self.VALID_CI_OPTIONS, "CI/CD")
         if self.infra:
@@ -285,7 +317,7 @@ class ProjectConfig:
                 "is_multi_env": len(environments) > 1,
                 "primary_env": environments[0] if environments else "dev",
                 "generated_at": datetime.datetime.now().isoformat(),
-                "generator_version": "1.5.0",
+                "generator_version": "1.6.0",
             }
         return self._template_context
     
@@ -401,6 +433,12 @@ class TemplateConfig:
         logger.debug(f"Cached {len(templates)} templates for {component}/{option}")
         return templates
     
+    def get_pipeline_templates(self, pipeline_option: str) -> List[str]:
+        """Get pipeline templates with validation"""
+        if not pipeline_option:
+            return []
+        return self._get_templates_for_component("pipelines", pipeline_option)
+    
     def get_ci_templates(self, ci_option: str) -> List[str]:
         """Get CI/CD templates with validation"""
         if not ci_option:
@@ -411,13 +449,13 @@ class TemplateConfig:
         """Get infrastructure templates with validation"""
         if not infra_option:
             return []
-        return self._get_templates_for_component("infra", infra_option)
+        return self._get_templates_for_component("infrastructure", infra_option)
     
     def get_deploy_templates(self, deploy_option: str) -> List[str]:
         """Get deployment templates with validation"""
         if not deploy_option:
             return []
-        return self._get_templates_for_component("deploy", deploy_option)
+        return self._get_templates_for_component("deployments", deploy_option)
     
     def get_observability_templates(self, obs_option: str) -> List[str]:
         """Get observability templates with validation"""

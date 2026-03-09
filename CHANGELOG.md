@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-03-09
+
+### 🎉 Major Refactoring - DevOps-Focused Generator
+
+#### 🔄 Complete DevOps Transformation
+- **Removed application templates** - No longer generates application code, now focuses purely on DevOps patterns
+- **Pipeline Frameworks** - Added 8 pipeline options: Node.js+TypeScript, Python, Java+Maven, Go, Docker Multi-Stage, Terraform Module, Kubernetes Operator, Microservice
+- **Infrastructure Patterns** - Added 7 infrastructure options: AWS VPC+EKS, Azure VNet+AKS, GCP VPC+GKE, Multi-Cloud Terraform, Kubernetes On-Prem, AWS ECS Fargate, Ansible Automation
+- **Deployment Strategies** - Added 7 deployment options: Blue-Green, Canary, Rolling, GitOps with ArgoCD, Helm Charts, Kustomize, Serverless Lambda
+- **Observability Stacks** - Added 6 monitoring options: Prometheus+Grafana, ELK Stack, DataDog, Jaeger+Prometheus, AWS CloudWatch, New Relic
+- **Security Frameworks** - Added 6 compliance options: NIST CSF, CIS Benchmarks, Zero Trust, SOC2, GDPR, HIPAA
+
+#### 📁 New Template System
+- **Pipeline Templates** - Real CI/CD pipeline configurations for each framework
+- **Infrastructure Templates** - Production-ready Terraform and CloudFormation templates
+- **Deployment Templates** - Complete Kubernetes manifests with advanced deployment strategies
+- **Monitoring Templates** - Comprehensive monitoring and alerting configurations
+- **Security Templates** - Full compliance framework implementations
+
+#### 🖥️ Enhanced Web UI
+- **DevOps-focused interface** - Updated UI to reflect new DevOps options
+- **Modern design** - Improved user experience with DevOps-specific workflows
+- **Real-time generation** - Live project generation with new DevOps templates
+
+#### 🛠️ CLI Improvements
+- **Updated commands** - All CLI commands now support new DevOps options
+- **Enhanced interactive mode** - Better prompts for DevOps-focused selections
+- **Improved help system** - Updated documentation for all new options
+
+### 🚀 Technical Improvements
+- **TypeScript updates** - Full type safety for new DevOps options
+- **Template engine** - Enhanced Jinja2 template processing
+- **Error handling** - Better validation and error messages
+- **Performance** - Optimized template loading and generation
+
 ## [1.5.0] - 2026-01-30
 
 ### 🎉 Major New Features

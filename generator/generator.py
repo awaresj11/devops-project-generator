@@ -284,6 +284,11 @@ class DevOpsProjectGenerator:
                 # Submit component generation tasks
                 futures = {}
                 
+                # Pipeline component
+                if self.config.pipeline:
+                    pipeline_templates = self.template_config.get_pipeline_templates(self.config.pipeline)
+                    futures["pipeline"] = executor.submit(self._generate_component_files, "Pipeline", pipeline_templates)
+                
                 # CI/CD component
                 if self.config.ci and self.config.ci != "none":
                     ci_templates = self.template_config.get_ci_templates(self.config.ci)

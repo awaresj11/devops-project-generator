@@ -41,16 +41,18 @@ import { saveAs } from "file-saver";
 
 const defaultConfig: ProjectConfig = {
   projectName: "",
+  pipeline: "nodejs-typescript",
   ci: "github-actions",
-  infra: "terraform",
-  deploy: "docker",
+  infra: "aws-vpc-eks",
+  deploy: "blue-green",
   envs: "dev,stage,prod",
-  observability: "logs-metrics",
-  security: "standard",
+  observability: "prometheus-grafana",
+  security: "nist-csf",
 };
 
 const stepIcons: Record<string, React.ElementType> = {
   project: FolderOpen,
+  pipeline: Terminal,
   ci: GitBranch,
   infra: Layers,
   deploy: Package,
@@ -182,11 +184,9 @@ export function ProjectGenerator() {
               <GitBranch className="h-3 w-3" /> {config.ci}
             </Badge>
           )}
-          {config.infra !== "none" && (
-            <Badge variant="secondary" className="gap-1">
-              <Layers className="h-3 w-3" /> {config.infra}
-            </Badge>
-          )}
+          <Badge variant="secondary" className="gap-1">
+            <Layers className="h-3 w-3" /> {config.infra}
+          </Badge>
           <Badge variant="secondary" className="gap-1">
             <Package className="h-3 w-3" /> {config.deploy}
           </Badge>
@@ -458,7 +458,7 @@ export function ProjectGenerator() {
                   {config.ci}
                 </Badge>
               )}
-              {completedSteps.has(2) && config.infra !== "none" && (
+              {completedSteps.has(2) && (
                 <Badge variant="outline" className="gap-1.5">
                   <Layers className="h-3 w-3" />
                   {config.infra}

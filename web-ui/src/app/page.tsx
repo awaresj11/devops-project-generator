@@ -84,7 +84,7 @@ export default function Home() {
                 DevOps Project Generator
               </span>
               <span className="text-[10px] text-muted-foreground leading-tight">
-                v1.5.0
+                v1.6.0
               </span>
             </div>
           </a>

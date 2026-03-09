@@ -1,5 +1,6 @@
 export interface ProjectConfig {
   projectName: string;
+  pipeline: PipelineOption;
   ci: CIOption;
   infra: InfraOption;
   deploy: DeployOption;
@@ -8,12 +9,13 @@ export interface ProjectConfig {
   security: SecurityOption;
 }
 
-export type CIOption = "github-actions" | "gitlab-ci" | "jenkins" | "none";
-export type InfraOption = "terraform" | "cloudformation" | "none";
-export type DeployOption = "vm" | "docker" | "kubernetes";
-export type EnvOption = "single" | "dev,stage,prod";
-export type ObservabilityOption = "logs" | "logs-metrics" | "full";
-export type SecurityOption = "basic" | "standard" | "strict";
+export type PipelineOption = "nodejs-typescript" | "python" | "java-maven" | "go" | "docker-multi-stage" | "terraform-module" | "kubernetes-operator" | "microservice";
+export type CIOption = "github-actions" | "gitlab-ci" | "jenkins" | "azure-pipelines" | "circleci" | "bitrise" | "none";
+export type InfraOption = "aws-vpc-eks" | "azure-vnet-aks" | "gcp-vpc-gke" | "terraform-multi-cloud" | "kubernetes-on-prem" | "ecs-fargate" | "ansible-automation";
+export type DeployOption = "blue-green" | "canary" | "rolling" | "gitops-argocd" | "helm-charts" | "kustomize" | "serverless-lambda";
+export type EnvOption = "single" | "dev,stage,prod" | "dev,qa,stage,prod" | "dev,prod";
+export type ObservabilityOption = "prometheus-grafana" | "elk-stack" | "datadog" | "jaeger-prometheus" | "cloudwatch" | "new-relic";
+export type SecurityOption = "nist-csf" | "cis-benchmarks" | "zero-trust" | "soc2-compliance" | "gdpr-compliance" | "hipaa-compliance";
 
 export interface OptionCard {
   value: string;

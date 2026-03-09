@@ -332,22 +332,28 @@ def _calculate_project_stats(project_path: Path) -> Dict[str, Any]:
 
 @app.command()
 def init(
+    pipeline: Optional[str] = typer.Option(
+        None,
+        "--pipeline",
+        help="Pipeline framework: nodejs-typescript, python, java-maven, go, docker-multistage, terraform-module, kubernetes-operator, microservice",
+        show_choices=True,
+    ),
     ci: Optional[str] = typer.Option(
         None,
         "--ci",
-        help="CI/CD platform: github-actions, gitlab-ci, jenkins, none",
+        help="CI/CD platform: github-actions, gitlab-ci, jenkins, azure-pipelines, gitlab-runners, none",
         show_choices=True,
     ),
     infra: Optional[str] = typer.Option(
         None,
         "--infra",
-        help="Infrastructure tool: terraform, cloudformation, none",
+        help="Infrastructure pattern: aws-vpc-eks, azure-vnet-aks, gcp-vpc-gke, multicloud-terraform, kubernetes-onprem, aws-ecs-fargate, ansible-automation",
         show_choices=True,
     ),
     deploy: Optional[str] = typer.Option(
         None,
         "--deploy",
-        help="Deployment method: vm, docker, kubernetes",
+        help="Deployment strategy: blue-green, canary, rolling, gitops-argocd, helm-charts, kustomize, serverless-lambda",
         show_choices=True,
     ),
     envs: Optional[str] = typer.Option(
@@ -358,13 +364,13 @@ def init(
     observability: Optional[str] = typer.Option(
         None,
         "--observability",
-        help="Observability level: logs, logs-metrics, full",
+        help="Observability stack: prometheus-grafana, elk-stack, datadog, jaeger-prometheus, cloudwatch, new-relic",
         show_choices=True,
     ),
     security: Optional[str] = typer.Option(
         None,
         "--security",
-        help="Security level: basic, standard, strict",
+        help="Security framework: nist-csf, cis-benchmarks, zero-trust, soc2, gdpr, hipaa",
         show_choices=True,
     ),
     project_name: Optional[str] = typer.Option(
@@ -408,6 +414,7 @@ def init(
                 config = _interactive_mode()
             else:
                 config = ProjectConfig(
+                    pipeline=pipeline,
                     ci=ci,
                     infra=infra,
                     deploy=deploy,
@@ -518,6 +525,26 @@ def _interactive_mode() -> ProjectConfig:
     """Interactive configuration mode"""
     console.print("\n[bold]🔧 Interactive Configuration[/bold]\n")
     
+    # Pipeline framework selection
+    pipeline_table = Table(title="Pipeline Frameworks")
+    pipeline_table.add_column("Option", style="cyan")
+    pipeline_table.add_column("Description")
+    pipeline_table.add_row("nodejs-typescript", "Node.js + TypeScript pipelines")
+    pipeline_table.add_row("python", "Python application pipelines")
+    pipeline_table.add_row("java-maven", "Enterprise Java pipelines")
+    pipeline_table.add_row("go", "Go application pipelines")
+    pipeline_table.add_row("docker-multistage", "Containerized application pipelines")
+    pipeline_table.add_row("terraform-module", "Infrastructure module pipelines")
+    pipeline_table.add_row("kubernetes-operator", "Kubernetes operator pipelines")
+    pipeline_table.add_row("microservice", "Microservice architecture pipelines")
+    console.print(pipeline_table)
+    
+    while True:
+        pipeline = typer.prompt("Choose pipeline framework", type=str).lower()
+        if pipeline in ProjectConfig.VALID_PIPELINE_OPTIONS:
+            break
+        console.print(f"[red]Invalid option. Please choose from: {', '.join(ProjectConfig.VALID_PIPELINE_OPTIONS)}[/red]")
+    
     # CI/CD selection
     ci_table = Table(title="CI/CD Platforms")
     ci_table.add_column("Option", style="cyan")
@@ -525,6 +552,8 @@ def _interactive_mode() -> ProjectConfig:
     ci_table.add_row("github-actions", "GitHub Actions workflows")
     ci_table.add_row("gitlab-ci", "GitLab CI/CD pipelines")
     ci_table.add_row("jenkins", "Jenkins pipeline files")
+    ci_table.add_row("azure-pipelines", "Azure DevOps pipelines")
+    ci_table.add_row("gitlab-runners", "GitLab Runners")
     ci_table.add_row("none", "No CI/CD")
     console.print(ci_table)
     
@@ -535,31 +564,39 @@ def _interactive_mode() -> ProjectConfig:
         console.print(f"[red]Invalid option. Please choose from: {', '.join(ProjectConfig.VALID_CI_OPTIONS)}[/red]")
     
     # Infrastructure selection
-    infra_table = Table(title="Infrastructure Tools")
+    infra_table = Table(title="Infrastructure Patterns")
     infra_table.add_column("Option", style="cyan")
     infra_table.add_column("Description")
-    infra_table.add_row("terraform", "Terraform IaC")
-    infra_table.add_row("cloudformation", "AWS CloudFormation")
-    infra_table.add_row("none", "No IaC")
+    infra_table.add_row("aws-vpc-eks", "Amazon EKS with VPC networking")
+    infra_table.add_row("azure-vnet-aks", "Azure AKS with virtual networking")
+    infra_table.add_row("gcp-vpc-gke", "Google GKE with VPC networking")
+    infra_table.add_row("multicloud-terraform", "Cross-cloud infrastructure")
+    infra_table.add_row("kubernetes-onprem", "On-premises Kubernetes")
+    infra_table.add_row("aws-ecs-fargate", "Serverless container orchestration")
+    infra_table.add_row("ansible-automation", "Configuration management")
     console.print(infra_table)
     
     while True:
-        infra = typer.prompt("Choose infrastructure tool", type=str).lower()
+        infra = typer.prompt("Choose infrastructure pattern", type=str).lower()
         if infra in ProjectConfig.VALID_INFRA_OPTIONS:
             break
         console.print(f"[red]Invalid option. Please choose from: {', '.join(ProjectConfig.VALID_INFRA_OPTIONS)}[/red]")
     
     # Deployment selection
-    deploy_table = Table(title="Deployment Methods")
+    deploy_table = Table(title="Deployment Strategies")
     deploy_table.add_column("Option", style="cyan")
     deploy_table.add_column("Description")
-    deploy_table.add_row("vm", "Virtual Machine deployment")
-    deploy_table.add_row("docker", "Docker container deployment")
-    deploy_table.add_row("kubernetes", "Kubernetes deployment")
+    deploy_table.add_row("blue-green", "Zero-downtime deployments")
+    deploy_table.add_row("canary", "Gradual rollout deployments")
+    deploy_table.add_row("rolling", "Incremental updates")
+    deploy_table.add_row("gitops-argocd", "Git-based continuous deployment")
+    deploy_table.add_row("helm-charts", "Kubernetes package management")
+    deploy_table.add_row("kustomize", "Kubernetes configuration management")
+    deploy_table.add_row("serverless-lambda", "AWS Lambda deployments")
     console.print(deploy_table)
     
     while True:
-        deploy = typer.prompt("Choose deployment method", type=str).lower()
+        deploy = typer.prompt("Choose deployment strategy", type=str).lower()
         if deploy in ProjectConfig.VALID_DEPLOY_OPTIONS:
             break
         console.print(f"[red]Invalid option. Please choose from: {', '.join(ProjectConfig.VALID_DEPLOY_OPTIONS)}[/red]")
@@ -572,31 +609,37 @@ def _interactive_mode() -> ProjectConfig:
         console.print("[red]Invalid environment format. Use 'single' or comma-separated values like 'dev,stage,prod'[/red]")
     
     # Observability
-    obs_table = Table(title="Observability Levels")
+    obs_table = Table(title="Observability Stacks")
     obs_table.add_column("Option", style="cyan")
     obs_table.add_column("Description")
-    obs_table.add_row("logs", "Logs only")
-    obs_table.add_row("logs-metrics", "Logs + Metrics")
-    obs_table.add_row("full", "Logs + Metrics + Alerts")
+    obs_table.add_row("prometheus-grafana", "Metrics and visualization")
+    obs_table.add_row("elk-stack", "Elasticsearch, Logstash, Kibana")
+    obs_table.add_row("datadog", "Full-stack monitoring")
+    obs_table.add_row("jaeger-prometheus", "Distributed tracing and metrics")
+    obs_table.add_row("cloudwatch", "AWS native monitoring")
+    obs_table.add_row("new-relic", "Application performance monitoring")
     console.print(obs_table)
     
     while True:
-        observability = typer.prompt("Choose observability level", type=str).lower()
+        observability = typer.prompt("Choose observability stack", type=str).lower()
         if observability in ProjectConfig.VALID_OBS_OPTIONS:
             break
         console.print(f"[red]Invalid option. Please choose from: {', '.join(ProjectConfig.VALID_OBS_OPTIONS)}[/red]")
     
     # Security
-    sec_table = Table(title="Security Levels")
+    sec_table = Table(title="Security Frameworks")
     sec_table.add_column("Option", style="cyan")
     sec_table.add_column("Description")
-    sec_table.add_row("basic", "Basic security practices")
-    sec_table.add_row("standard", "Standard security measures")
-    sec_table.add_row("strict", "Strict security controls")
+    sec_table.add_row("nist-csf", "NIST Cybersecurity Framework")
+    sec_table.add_row("cis-benchmarks", "Center for Internet Security controls")
+    sec_table.add_row("zero-trust", "Zero Trust Architecture")
+    sec_table.add_row("soc2", "Service Organization Control 2")
+    sec_table.add_row("gdpr", "General Data Protection Regulation")
+    sec_table.add_row("hipaa", "Health Insurance Portability and Accountability Act")
     console.print(sec_table)
     
     while True:
-        security = typer.prompt("Choose security level", type=str).lower()
+        security = typer.prompt("Choose security framework", type=str).lower()
         if security in ProjectConfig.VALID_SEC_OPTIONS:
             break
         console.print(f"[red]Invalid option. Please choose from: {', '.join(ProjectConfig.VALID_SEC_OPTIONS)}[/red]")
@@ -604,6 +647,7 @@ def _interactive_mode() -> ProjectConfig:
     project_name = typer.prompt("Project name", default="devops-project")
     
     return ProjectConfig(
+        pipeline=pipeline,
         ci=ci,
         infra=infra,
         deploy=deploy,
@@ -622,6 +666,21 @@ def list_options() -> None:
         border_style="blue"
     ))
     
+    # Pipeline Framework Options
+    console.print("\n[bold]🔄 Pipeline Frameworks:[/bold]")
+    pipeline_table = Table()
+    pipeline_table.add_column("Option", style="cyan")
+    pipeline_table.add_column("Description")
+    pipeline_table.add_row("nodejs-typescript", "Node.js + TypeScript pipelines")
+    pipeline_table.add_row("python", "Python application pipelines")
+    pipeline_table.add_row("java-maven", "Enterprise Java pipelines")
+    pipeline_table.add_row("go", "Go application pipelines")
+    pipeline_table.add_row("docker-multistage", "Containerized application pipelines")
+    pipeline_table.add_row("terraform-module", "Infrastructure module pipelines")
+    pipeline_table.add_row("kubernetes-operator", "Kubernetes operator pipelines")
+    pipeline_table.add_row("microservice", "Microservice architecture pipelines")
+    console.print(pipeline_table)
+    
     # CI/CD Options
     console.print("\n[bold]🔄 CI/CD Platforms:[/bold]")
     ci_table = Table()
@@ -630,27 +689,37 @@ def list_options() -> None:
     ci_table.add_row("github-actions", "GitHub Actions workflows")
     ci_table.add_row("gitlab-ci", "GitLab CI/CD pipelines")
     ci_table.add_row("jenkins", "Jenkins pipeline files")
+    ci_table.add_row("azure-pipelines", "Azure DevOps pipelines")
+    ci_table.add_row("gitlab-runners", "GitLab Runners")
     ci_table.add_row("none", "No CI/CD")
     console.print(ci_table)
     
     # Infrastructure Options
-    console.print("\n[bold]🏗️ Infrastructure Tools:[/bold]")
+    console.print("\n[bold]☁️ Infrastructure Patterns:[/bold]")
     infra_table = Table()
     infra_table.add_column("Option", style="cyan")
     infra_table.add_column("Description")
-    infra_table.add_row("terraform", "Terraform IaC")
-    infra_table.add_row("cloudformation", "AWS CloudFormation")
-    infra_table.add_row("none", "No IaC")
+    infra_table.add_row("aws-vpc-eks", "Amazon EKS with VPC networking")
+    infra_table.add_row("azure-vnet-aks", "Azure AKS with virtual networking")
+    infra_table.add_row("gcp-vpc-gke", "Google GKE with VPC networking")
+    infra_table.add_row("multicloud-terraform", "Cross-cloud infrastructure")
+    infra_table.add_row("kubernetes-onprem", "On-premises Kubernetes")
+    infra_table.add_row("aws-ecs-fargate", "Serverless container orchestration")
+    infra_table.add_row("ansible-automation", "Configuration management")
     console.print(infra_table)
     
     # Deployment Options
-    console.print("\n[bold]🚀 Deployment Methods:[/bold]")
+    console.print("\n[bold]🚀 Deployment Strategies:[/bold]")
     deploy_table = Table()
     deploy_table.add_column("Option", style="cyan")
     deploy_table.add_column("Description")
-    deploy_table.add_row("vm", "Virtual Machine deployment")
-    deploy_table.add_row("docker", "Docker container deployment")
-    deploy_table.add_row("kubernetes", "Kubernetes deployment")
+    deploy_table.add_row("blue-green", "Zero-downtime deployments")
+    deploy_table.add_row("canary", "Gradual rollout deployments")
+    deploy_table.add_row("rolling", "Incremental updates")
+    deploy_table.add_row("gitops-argocd", "Git-based continuous deployment")
+    deploy_table.add_row("helm-charts", "Kubernetes package management")
+    deploy_table.add_row("kustomize", "Kubernetes configuration management")
+    deploy_table.add_row("serverless-lambda", "AWS Lambda deployments")
     console.print(deploy_table)
     
     # Environment Options
@@ -664,23 +733,29 @@ def list_options() -> None:
     console.print(env_table)
     
     # Observability Options
-    console.print("\n[bold]📊 Observability Levels:[/bold]")
+    console.print("\n[bold]📊 Observability Stacks:[/bold]")
     obs_table = Table()
     obs_table.add_column("Option", style="cyan")
     obs_table.add_column("Description")
-    obs_table.add_row("logs", "Logs only")
-    obs_table.add_row("logs-metrics", "Logs + Metrics")
-    obs_table.add_row("full", "Logs + Metrics + Alerts")
+    obs_table.add_row("prometheus-grafana", "Metrics and visualization")
+    obs_table.add_row("elk-stack", "Elasticsearch, Logstash, Kibana")
+    obs_table.add_row("datadog", "Full-stack monitoring")
+    obs_table.add_row("jaeger-prometheus", "Distributed tracing and metrics")
+    obs_table.add_row("cloudwatch", "AWS native monitoring")
+    obs_table.add_row("new-relic", "Application performance monitoring")
     console.print(obs_table)
     
     # Security Options
-    console.print("\n[bold]🔒 Security Levels:[/bold]")
+    console.print("\n[bold]🔒 Security Frameworks:[/bold]")
     sec_table = Table()
     sec_table.add_column("Option", style="cyan")
     sec_table.add_column("Description")
-    sec_table.add_row("basic", "Basic security practices")
-    sec_table.add_row("standard", "Standard security measures")
-    sec_table.add_row("strict", "Strict security controls")
+    sec_table.add_row("nist-csf", "NIST Cybersecurity Framework")
+    sec_table.add_row("cis-benchmarks", "Center for Internet Security controls")
+    sec_table.add_row("zero-trust", "Zero Trust Architecture")
+    sec_table.add_row("soc2", "Service Organization Control 2")
+    sec_table.add_row("gdpr", "General Data Protection Regulation")
+    sec_table.add_row("hipaa", "Health Insurance Portability and Accountability Act")
     console.print(sec_table)
 
 
@@ -2757,7 +2832,7 @@ def _save_profile(name: str) -> None:
         "description": typer.prompt("Description (optional)", default=""),
         "created_at": datetime.datetime.now().isoformat(),
         "config": config,
-        "version": "1.5.0"
+        "version": "1.6.0"
     }
     
     with open(profile_file, 'w', encoding='utf-8') as f:
@@ -3007,7 +3082,7 @@ def version() -> None:
     try:
         from . import __version__
     except ImportError:
-        __version__ = "1.5.0"
+        __version__ = "1.6.0"
     console.print(f"[bold blue]DevOps Project Generator[/bold blue] v{__version__}")
 
 
