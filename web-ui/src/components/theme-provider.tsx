@@ -23,7 +23,14 @@ export function ThemeProvider({
   children,
   defaultTheme = "system",
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(defaultTheme);
+  const [theme, setTheme] = useState<Theme>(() => {
+    // Initialize from localStorage or system preference
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('theme') as Theme;
+      if (stored) return stored;
+    }
+    return defaultTheme;
+  });
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -35,12 +42,14 @@ export function ThemeProvider({
         ? "dark"
         : "light";
       root.classList.add(systemTheme);
+      console.log(`Theme: System (resolved to ${systemTheme})`);
       
       // Listen for system theme changes
       const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
       const handleChange = (e: MediaQueryListEvent) => {
         root.classList.remove("light", "dark");
         root.classList.add(e.matches ? "dark" : "light");
+        console.log(`System theme changed to: ${e.matches ? "dark" : "light"}`);
       };
       
       mediaQuery.addEventListener("change", handleChange);
@@ -48,6 +57,14 @@ export function ThemeProvider({
     }
 
     root.classList.add(theme);
+    console.log(`Theme: ${theme}`);
+  }, [theme]);
+
+  // Persist theme choice to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('theme', theme);
+    }
   }, [theme]);
 
   return (
