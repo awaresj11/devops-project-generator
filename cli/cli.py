@@ -5,30 +5,30 @@ CLI interface for DevOps Project Generator
 
 import os
 import sys
-import shutil
-import json
-import yaml
-import datetime
-import re
 import logging
 import time
 import traceback
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.traceback import install
-from rich.live import Live
-from rich.text import Text
-from rich.prompt import Confirm, Prompt
 
 from generator import ProjectConfig, DevOpsProjectGenerator
-from generator.scanner import DependencyScanner
-from generator.config_generator import MultiEnvConfigGenerator
+from .utils import (
+    format_duration, format_file_size, calculate_project_stats,
+    show_success_message, show_error_message, show_warning_message,
+    show_progress_spinner, safe_execute, validate_project_name,
+    validate_output_path, safe_print
+)
+from .commands import (
+    ProjectCommands, ConfigCommands, TemplateCommands,
+    BackupCommands, ProfileCommands, TestCommands,
+    ScanCommands, MultiEnvCommands
+)
 
 # Install rich traceback for better error display
 install(show_locals=True)
@@ -43,6 +43,12 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+
+# =============================================================================
+# MAIN CLI APPLICATION
+# =============================================================================
 
 app = typer.Typer(
     name="devops-project-generator",
@@ -70,264 +76,6 @@ def handle_cli_errors():
         console.print(f"\n[red]❌ Error: {str(e)}[/red]")
         console.print("[yellow]💡 Check the log file for details: devops-generator.log[/yellow]")
         raise typer.Exit(1)
-
-
-def safe_print(console_output: str, fallback: str = None) -> None:
-    """Safely print console output with fallback for markup errors"""
-    try:
-        console.print(console_output)
-    except Exception as e:
-        if "markup" in str(e).lower() or "rich" in str(e).lower():
-            if fallback:
-                console.print(fallback)
-            else:
-                # Remove rich markup and print plain text
-                import re
-                plain_text = re.sub(r'\[/?[^\]]+\]', '', console_output)
-                console.print(plain_text)
-        else:
-            raise
-
-
-def validate_project_name(name: str) -> str:
-    """Validate and sanitize project name"""
-    if not name:
-        raise typer.BadParameter("Project name cannot be empty")
-    
-    # Basic validation
-    if len(name) > 50:
-        raise typer.BadParameter("Project name too long (max 50 characters)")
-    
-    # Check for invalid characters
-    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
-        raise typer.BadParameter("Project name can only contain letters, numbers, hyphens, and underscores")
-    
-    return name
-
-
-def validate_output_path(path: str) -> Path:
-    """Validate output path and permissions"""
-    output_path = Path(path)
-    
-    if not output_path.exists():
-        try:
-            output_path.mkdir(parents=True, exist_ok=True)
-        except PermissionError:
-            raise typer.BadParameter(f"Permission denied creating directory: {output_path}")
-    
-    if not output_path.is_dir():
-        raise typer.BadParameter(f"Output path is not a directory: {output_path}")
-    
-    # Check write permissions
-    test_file = output_path / '.devops_generator_test'
-    try:
-        test_file.touch()
-        test_file.unlink()
-    except PermissionError:
-        raise typer.BadParameter(f"No write permission in directory: {output_path}")
-    
-    return output_path
-
-
-def format_duration(seconds: float) -> str:
-    """Format duration in human-readable format"""
-    if seconds < 1:
-        return f"{int(seconds * 1000)}ms"
-    elif seconds < 60:
-        return f"{seconds:.1f}s"
-    else:
-        minutes = int(seconds // 60)
-        remaining_seconds = int(seconds % 60)
-        return f"{minutes}m {remaining_seconds}s"
-
-
-def format_file_size(bytes_size: int) -> str:
-    """Format file size in human-readable format"""
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if bytes_size < 1024.0:
-            return f"{bytes_size:.1f} {unit}"
-        bytes_size /= 1024.0
-    return f"{bytes_size:.1f} TB"
-
-
-def calculate_project_stats(project_path: Path) -> Dict[str, Any]:
-    """Calculate comprehensive project statistics"""
-    stats = {
-        'files': 0,
-        'directories': 0,
-        'size': 0,
-        'size_formatted': '0 B'
-    }
-    
-    if not project_path.exists():
-        return stats
-    
-    try:
-        for item in project_path.rglob('*'):
-            if item.is_file():
-                stats['files'] += 1
-                stats['size'] += item.stat().st_size
-            elif item.is_dir():
-                stats['directories'] += 1
-        
-        stats['size_formatted'] = format_file_size(stats['size'])
-    except Exception as e:
-        logger.warning(f"Error calculating project stats: {str(e)}")
-    
-    return stats
-
-
-def show_success_message(title: str, message: str) -> None:
-    """Display a success message with consistent formatting"""
-    console.print(Panel.fit(
-        f"[bold green]✅ {title}[/bold green]\n{message}",
-        border_style="green"
-    ))
-
-
-def show_error_message(title: str, message: str) -> None:
-    """Display an error message with consistent formatting"""
-    console.print(Panel.fit(
-        f"[bold red]❌ {title}[/bold red]\n{message}",
-        border_style="red"
-    ))
-
-
-def show_warning_message(title: str, message: str) -> None:
-    """Display a warning message with consistent formatting"""
-    console.print(Panel.fit(
-        f"[bold yellow]⚠️  {title}[/bold yellow]\n{message}",
-        border_style="yellow"
-    ))
-
-
-def validate_output_path(path: str) -> Path:
-    """Validate and normalize output path"""
-    try:
-        output_path = Path(path).resolve()
-        
-        # Check if parent directory exists and is writable
-        if not output_path.parent.exists():
-            try:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-            except PermissionError:
-                raise typer.BadParameter(f"Cannot create directory: {output_path.parent}")
-        
-        if not os.access(output_path.parent, os.W_OK):
-            raise typer.BadParameter(f"Directory not writable: {output_path.parent}")
-        
-        return output_path
-    except Exception as e:
-        raise typer.BadParameter(f"Invalid output path: {str(e)}")
-
-
-def handle_keyboard_interrupt(func):
-    """Decorator to handle keyboard interrupts gracefully"""
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except KeyboardInterrupt:
-            console.print("\n[yellow]⚠️  Operation cancelled by user[/yellow]")
-            logger.info("Operation cancelled by user")
-            raise typer.Exit(130)
-        except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-            console.print(f"\n[red]❌ Unexpected error: {str(e)}[/red]")
-            console.print("[yellow]💡 Check the log file for details: devops-generator.log[/yellow]")
-            raise typer.Exit(1)
-    return wrapper
-
-
-def show_progress_spinner(description: str):
-    """Show a progress spinner for long operations"""
-    return Progress(
-        SpinnerColumn(),
-        TextColumn(description),
-        console=console,
-        transient=True,
-    )
-
-
-def show_success_message(title: str, message: str) -> None:
-    """Display a styled success message"""
-    console.print(Panel.fit(
-        f"[bold green]✅ {title}[/bold green]\n"
-        f"[dim]{message}[/dim]",
-        border_style="green",
-        padding=(1, 2)
-    ))
-
-
-def show_error_message(title: str, message: str) -> None:
-    """Display a styled error message"""
-    console.print(Panel.fit(
-        f"[bold red]❌ {title}[/bold red]\n"
-        f"[dim]{message}[/dim]",
-        border_style="red",
-        padding=(1, 2)
-    ))
-
-
-def show_warning_message(title: str, message: str) -> None:
-    """Display a styled warning message"""
-    console.print(Panel.fit(
-        f"[bold yellow]⚠️  {title}[/bold yellow]\n"
-        f"[dim]{message}[/dim]",
-        border_style="yellow",
-        padding=(1, 2)
-    ))
-
-
-def format_file_size(size_bytes: int) -> str:
-    """Format file size in human readable format"""
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} TB"
-
-
-def format_duration(seconds: float) -> str:
-    """Format duration in human readable format"""
-    if seconds < 1:
-        return f"{int(seconds * 1000)}ms"
-    elif seconds < 60:
-        return f"{seconds:.2f}s"
-    elif seconds < 3600:
-        minutes = int(seconds // 60)
-        secs = seconds % 60
-        return f"{minutes}m {secs:.0f}s"
-    else:
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        return f"{hours}h {minutes}m"
-
-
-def _calculate_project_stats(project_path: Path) -> Dict[str, Any]:
-    """Calculate project statistics"""
-    stats = {
-        "files": 0,
-        "directories": 0,
-        "size_bytes": 0,
-        "size_formatted": "0 B"
-    }
-    
-    if not project_path.exists():
-        return stats
-    
-    try:
-        for item in project_path.rglob("*"):
-            if item.is_file():
-                stats["files"] += 1
-                stats["size_bytes"] += item.stat().st_size
-            elif item.is_dir():
-                stats["directories"] += 1
-        
-        stats["size_formatted"] = format_file_size(stats["size_bytes"])
-    except Exception as e:
-        logger.warning(f"Error calculating project stats: {str(e)}")
-    
-    return stats
 
 
 @app.command()
@@ -759,175 +507,6 @@ def list_options() -> None:
     console.print(sec_table)
 
 
-@app.command()
-def config(
-    action: str = typer.Argument(
-        "create",
-        help="Action: create, show, or validate"
-    ),
-    config_file: Optional[str] = typer.Option(
-        "devops-config.yaml",
-        "--file",
-        help="Configuration file path"
-    ),
-) -> None:
-    """Manage project configuration files"""
-    config_path = Path(config_file)
-    
-    if action == "create":
-        _create_config_file(config_path)
-    elif action == "show":
-        _show_config_file(config_path)
-    elif action == "validate":
-        _validate_config_file(config_path)
-    else:
-        console.print(f"[red]❌ Unknown action: {action}[/red]")
-        console.print("[yellow]Available actions: create, show, validate[/yellow]")
-        raise typer.Exit(1)
-
-
-def _create_config_file(config_path: Path) -> None:
-    """Create a sample configuration file"""
-    console.print(f"[blue]📝 Creating configuration file: {config_path}[/blue]")
-    
-    sample_config = """# DevOps Project Generator Configuration
-# This file defines the default settings for project generation
-
-project:
-  name: "my-devops-project"
-  description: "A production-ready DevOps project"
-  author: "Your Name"
-  email: "your.email@example.com"
-
-# CI/CD Configuration
-ci:
-  platform: "github-actions"  # github-actions, gitlab-ci, jenkins, none
-  docker_registry: "docker.io"
-  cache_dependencies: true
-
-# Infrastructure Configuration  
-infra:
-  tool: "terraform"  # terraform, cloudformation, none
-  cloud_provider: "aws"  # aws, gcp, azure
-  region: "us-west-2"
-
-# Deployment Configuration
-deploy:
-  method: "kubernetes"  # vm, docker, kubernetes
-  environments: "dev,stage,prod"
-  auto_scaling: true
-  health_checks: true
-
-# Observability Configuration
-observability:
-  level: "full"  # logs, logs-metrics, full
-  metrics_retention: "30d"
-  log_retention: "7d"
-  alerting: true
-
-# Security Configuration
-security:
-  level: "standard"  # basic, standard, strict
-  ssl_certificates: true
-  secrets_management: "vault"
-  vulnerability_scanning: true
-
-# Custom Templates (optional)
-templates:
-  custom_dir: "~/.devops-generator/templates"
-  overwrite_defaults: false
-
-# Advanced Options
-advanced:
-  multi_region: false
-  blue_green_deployments: false
-  canary_deployments: false
-  disaster_recovery: false
-"""
-    
-    try:
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(config_path, "w", encoding="utf-8") as f:
-            f.write(sample_config)
-        console.print(f"[green]✅ Configuration file created: {config_path}[/green]")
-        console.print("[yellow]💡 Edit this file to customize your project defaults[/yellow]")
-    except Exception as e:
-        console.print(f"[red]❌ Error creating config file: {str(e)}[/red]")
-        raise typer.Exit(1)
-
-
-def _show_config_file(config_path: Path) -> None:
-    """Display the current configuration file"""
-    if not config_path.exists():
-        console.print(f"[red]❌ Configuration file not found: {config_path}[/red]")
-        console.print("[yellow]💡 Use 'devops-project-generator config create' to create one[/yellow]")
-        raise typer.Exit(1)
-    
-    console.print(f"[blue]📋 Configuration file: {config_path}[/blue]")
-    console.print()
-    
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            content = f.read()
-            console.print(content)
-    except Exception as e:
-        console.print(f"[red]❌ Error reading config file: {str(e)}[/red]")
-        raise typer.Exit(1)
-
-
-def _validate_config_file(config_path: Path) -> None:
-    """Validate the configuration file syntax and values"""
-    if not config_path.exists():
-        console.print(f"[red]❌ Configuration file not found: {config_path}[/red]")
-        raise typer.Exit(1)
-    
-    console.print(f"[blue]🔍 Validating configuration file: {config_path}[/blue]")
-    
-    try:
-        import yaml
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = yaml.safe_load(f)
-        
-        # Validate structure
-        required_sections = ["project", "ci", "deploy", "observability", "security"]
-        missing_sections = []
-        
-        for section in required_sections:
-            if section not in config_data:
-                missing_sections.append(section)
-        
-        if missing_sections:
-            console.print(f"[yellow]⚠️  Missing sections: {', '.join(missing_sections)}[/yellow]")
-        
-        # Validate values
-        validation_errors = []
-        
-        if "ci" in config_data:
-            ci_platform = config_data["ci"].get("platform", "")
-            if ci_platform not in ["github-actions", "gitlab-ci", "jenkins", "none"]:
-                validation_errors.append(f"Invalid CI platform: {ci_platform}")
-        
-        if "deploy" in config_data:
-            deploy_method = config_data["deploy"].get("method", "")
-            if deploy_method not in ["vm", "docker", "kubernetes"]:
-                validation_errors.append(f"Invalid deployment method: {deploy_method}")
-        
-        if validation_errors:
-            console.print("[red]❌ Validation errors found:[/red]")
-            for error in validation_errors:
-                console.print(f"  • {error}")
-        else:
-            console.print("[green]✅ Configuration file is valid![/green]")
-    
-    except ImportError:
-        console.print("[yellow]⚠️  PyYAML not installed, cannot validate YAML syntax[/yellow]")
-        console.print("[dim]Install with: pip install PyYAML[/dim]")
-    except yaml.YAMLError as e:
-        console.print(f"[red]❌ YAML syntax error: {str(e)}[/red]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]❌ Error validating config: {str(e)}[/red]")
-        raise typer.Exit(1)
 
 
 @app.command()
@@ -943,145 +522,47 @@ def validate(
     ),
 ) -> None:
     """Validate a DevOps project structure and configuration"""
-    project_path = Path(project_path)
-    
-    if not project_path.exists():
-        console.print(f"[red]❌ Project path '{project_path}' does not exist[/red]")
-        raise typer.Exit(1)
-    
-    console.print(Panel.fit(
-        "[bold blue]🔍 Project Validation[/bold blue]\n"
-        "[dim]Checking DevOps project structure and configuration[/dim]",
-        border_style="blue"
-    ))
-    
-    validation_results = _validate_project_structure(project_path)
-    
-    # Display results
-    _display_validation_results(validation_results)
-    
-    # Auto-fix if requested
-    if fix and validation_results["issues"]:
-        console.print("\n[yellow]🔧 Attempting to fix issues...[/yellow]")
-        _fix_project_issues(project_path, validation_results["issues"])
-    
-    # Exit with appropriate code
-    if validation_results["critical_issues"]:
-        console.print(f"\n[red]❌ Validation failed with {len(validation_results['critical_issues'])} critical issues[/red]")
-        raise typer.Exit(1)
-    elif validation_results["issues"]:
-        console.print(f"\n[yellow]⚠️  Validation passed with {len(validation_results['issues'])} warnings[/yellow]")
-    else:
-        console.print("\n[green]✅ Project validation passed successfully![/green]")
+    with handle_cli_errors():
+        ProjectCommands.validate(project_path, fix)
 
 
-def _validate_project_structure(project_path: Path) -> dict:
-    """Validate the project structure and return results"""
-    results = {
-        "critical_issues": [],
-        "issues": [],
-        "warnings": [],
-        "passed_checks": []
-    }
-    
-    # Check required directories
-    required_dirs = [
-        "app", "ci", "infra", "containers", "k8s", 
-        "monitoring", "security", "scripts"
-    ]
-    
-    for dir_name in required_dirs:
-        dir_path = project_path / dir_name
-        if dir_path.exists() and dir_path.is_dir():
-            results["passed_checks"].append(f"✅ {dir_name}/ directory exists")
-        else:
-            results["issues"].append(f"❌ Missing {dir_name}/ directory")
-    
-    # Check required files
-    required_files = [
-        "README.md", "Makefile", ".gitignore"
-    ]
-    
-    for file_name in required_files:
-        file_path = project_path / file_name
-        if file_path.exists() and file_path.is_file():
-            results["passed_checks"].append(f"✅ {file_name} exists")
-        else:
-            results["critical_issues"].append(f"❌ Missing {file_name}")
-    
-    # Check script permissions
-    script_files = [
-        "scripts/setup.sh", "scripts/deploy.sh"
-    ]
-    
-    for script in script_files:
-        script_path = project_path / script
-        if script_path.exists():
-            if os.access(script_path, os.X_OK):
-                results["passed_checks"].append(f"✅ {script} is executable")
-            else:
-                results["issues"].append(f"⚠️  {script} is not executable")
-    
-    # Check for configuration files
-    config_files = [
-        "ci/pipelines", "infra/environments", "k8s/base"
-    ]
-    
-    for config_dir in config_files:
-        config_path = project_path / config_dir
-        if config_path.exists():
-            files = list(config_path.glob("*"))
-            if files:
-                results["passed_checks"].append(f"✅ {config_dir}/ contains {len(files)} files")
-            else:
-                results["warnings"].append(f"⚠️  {config_dir}/ is empty")
-    
-    return results
+@app.command()
+def info(
+    project_path: str = typer.Argument(
+        ".",
+        help="Path to the DevOps project to analyze"
+    ),
+    detailed: bool = typer.Option(
+        False,
+        "--detailed",
+        help="Show detailed file-by-file analysis"
+    ),
+) -> None:
+    """Show detailed information and statistics about a DevOps project"""
+    with handle_cli_errors():
+        ProjectCommands.info(project_path, detailed)
 
 
-def _display_validation_results(results: dict) -> None:
-    """Display validation results in a formatted way"""
-    if results["passed_checks"]:
-        console.print("\n[bold green]✅ Passed Checks:[/bold green]")
-        for check in results["passed_checks"]:
-            console.print(f"  {check}")
-    
-    if results["warnings"]:
-        console.print("\n[bold yellow]⚠️  Warnings:[/bold yellow]")
-        for warning in results["warnings"]:
-            console.print(f"  {warning}")
-    
-    if results["issues"]:
-        console.print("\n[bold red]❌ Issues:[/bold red]")
-        for issue in results["issues"]:
-            console.print(f"  {issue}")
-    
-    if results["critical_issues"]:
-        console.print("\n[bold red]🚨 Critical Issues:[/bold red]")
-        for issue in results["critical_issues"]:
-            console.print(f"  {issue}")
-
-
-def _fix_project_issues(project_path: Path, issues: list) -> None:
-    """Attempt to automatically fix common issues"""
-    for issue in issues:
-        if "is not executable" in issue:
-            script_file = issue.split("⚠️  ")[1].split(" is not executable")[0]
-            script_path = project_path / script_file
-            try:
-                os.chmod(script_path, 0o755)
-                console.print(f"[green]✅ Fixed: Made {script_file} executable[/green]")
-            except Exception as e:
-                console.print(f"[red]❌ Could not fix {script_file}: {str(e)}[/red]")
-        
-        elif "Missing" in issue and "directory" in issue:
-            dir_name = issue.split("Missing ")[1].split("/ directory")[0]
-            dir_path = project_path / dir_name
-            try:
-                dir_path.mkdir(parents=True, exist_ok=True)
-                console.print(f"[green]✅ Fixed: Created {dir_name}/ directory[/green]")
-            except Exception as e:
-                console.print(f"[red]❌ Could not create {dir_name}/: {str(e)}[/red]")
+@app.command()
+def health(
+    project_path: str = typer.Argument(
+        ".",
+        help="Path to the DevOps project to check"
+    ),
+    detailed: bool = typer.Option(
+        False,
+        "--detailed",
+        help="Show detailed health analysis"
+    ),
+    fix: bool = typer.Option(
+        False,
+        "--fix",
+        help="Attempt to fix health issues automatically"
+    ),
+) -> None:
+    """Perform comprehensive health check on DevOps project"""
+    with handle_cli_errors():
+        ProjectCommands.health(project_path, detailed, fix)
 
 
 @app.command()
@@ -1102,492 +583,244 @@ def cleanup(
     ),
 ) -> None:
     """Clean up a DevOps project and remove generated resources"""
-    project_path = Path(project_path).resolve()
-    
-    if not project_path.exists():
-        console.print(f"[red]❌ Project path '{project_path}' does not exist[/red]")
-        raise typer.Exit(1)
-    
-    console.print(Panel.fit(
-        "[bold red]🧹 Project Cleanup[/bold red]\n"
-        "[dim]Remove generated DevOps project and resources[/dim]",
-        border_style="red"
-    ))
-    
-    # Show project info before cleanup
-    project_info = _get_project_info(project_path)
-    _display_project_summary(project_info)
-    
-    # Confirmation prompt
-    if not force:
-        console.print(f"\n[red]⚠️  This will permanently delete the project at:[/red]")
-        console.print(f"[bold]{project_path}[/bold]")
-        
-        if not typer.confirm("\n[yellow]Are you sure you want to continue?[/yellow]"):
-            console.print("[dim]Operation cancelled.[/dim]")
-            raise typer.Exit(0)
-    
-    # Perform cleanup
-    cleanup_results = _cleanup_project(project_path, keep_config)
-    
-    # Display results
-    _display_cleanup_results(cleanup_results)
-
-
-def _get_project_info(project_path: Path) -> dict:
-    """Gather information about the project"""
-    info = {
-        "name": project_path.name,
-        "path": project_path,
-        "size_bytes": 0,
-        "file_count": 0,
-        "dir_count": 0,
-        "devops_files": [],
-        "config_files": []
-    }
-    
-    try:
-        for item in project_path.rglob("*"):
-            if item.is_file():
-                info["file_count"] += 1
-                info["size_bytes"] += item.stat().st_size
-                
-                # Check for DevOps-specific files
-                if any(pattern in str(item) for pattern in ["Dockerfile", "Makefile", ".yml", ".yaml", ".tf", "k8s"]):
-                    info["devops_files"].append(item.relative_to(project_path))
-                
-                # Check for config files
-                if item.name.endswith((".yaml", ".yml", ".json", ".toml", ".ini")):
-                    info["config_files"].append(item.relative_to(project_path))
-            
-            elif item.is_dir() and item != project_path:
-                info["dir_count"] += 1
-    
-    except Exception as e:
-        console.print(f"[yellow]⚠️  Could not analyze project: {str(e)}[/yellow]")
-    
-    return info
-
-
-def _display_project_summary(info: dict) -> None:
-    """Display a summary of the project to be cleaned up"""
-    size_mb = info["size_bytes"] / (1024 * 1024)
-    
-    console.print(f"\n[bold]📊 Project Summary:[/bold]")
-    console.print(f"  Name: {info['name']}")
-    console.print(f"  Path: {info['path']}")
-    console.print(f"  Size: {size_mb:.2f} MB")
-    console.print(f"  Files: {info['file_count']}")
-    console.print(f"  Directories: {info['dir_count']}")
-    console.print(f"  DevOps files: {len(info['devops_files'])}")
-    console.print(f"  Config files: {len(info['config_files'])}")
-    
-    if info["devops_files"]:
-        console.print(f"\n[dim]DevOps files found:[/dim]")
-        for file in info["devops_files"][:10]:  # Show first 10
-            console.print(f"  • {file}")
-        if len(info["devops_files"]) > 10:
-            console.print(f"  ... and {len(info['devops_files']) - 10} more")
-
-
-def _cleanup_project(project_path: Path, keep_config: bool) -> dict:
-    """Perform the actual cleanup operation"""
-    results = {
-        "deleted_files": 0,
-        "deleted_dirs": 0,
-        "kept_files": [],
-        "errors": []
-    }
-    
-    try:
-        if keep_config:
-            # Preserve config files
-            config_files = []
-            for item in project_path.rglob("*"):
-                if item.is_file() and item.name.endswith((".yaml", ".yml", ".json", ".toml", ".ini")):
-                    config_files.append(item)
-            
-            # Move config files to temporary location
-            temp_dir = project_path.parent / f"{project_path.name}_config_backup"
-            temp_dir.mkdir(exist_ok=True)
-            
-            for config_file in config_files:
-                try:
-                    relative_path = config_file.relative_to(project_path)
-                    backup_path = temp_dir / relative_path
-                    backup_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(config_file), str(backup_path))
-                    results["kept_files"].append(str(relative_path))
-                except Exception as e:
-                    results["errors"].append(f"Could not backup {config_file}: {str(e)}")
-        
-        # Remove the project directory
-        shutil.rmtree(project_path)
-        results["deleted_dirs"] = 1  # The main project directory
-        
-        # Restore config files if they were kept
-        if keep_config and results["kept_files"]:
-            console.print(f"[yellow]📁 Configuration files backed up to: {temp_dir}[/yellow]")
-    
-    except Exception as e:
-        results["errors"].append(f"Cleanup error: {str(e)}")
-    
-    return results
-
-
-def _display_cleanup_results(results: dict) -> None:
-    """Display the results of the cleanup operation"""
-    if results["errors"]:
-        console.print("\n[red]❌ Cleanup completed with errors:[/red]")
-        for error in results["errors"]:
-            console.print(f"  • {error}")
-    else:
-        console.print("\n[green]✅ Cleanup completed successfully![/green]")
-        console.print(f"  Deleted directories: {results['deleted_dirs']}")
-        
-        if results["kept_files"]:
-            console.print(f"  Preserved config files: {len(results['kept_files'])}")
-            for file in results["kept_files"]:
-                console.print(f"    • {file}")
+    with handle_cli_errors():
+        ProjectCommands.cleanup(project_path, force, keep_config)
 
 
 @app.command()
-def info(
+def config(
+    action: str = typer.Argument(
+        "create",
+        help="Action: create, show, or validate"
+    ),
+    config_file: Optional[str] = typer.Option(
+        "devops-config.yaml",
+        "--file",
+        help="Configuration file path"
+    ),
+) -> None:
+    """Manage project configuration files"""
+    with handle_cli_errors():
+        ConfigCommands.config(action, config_file)
+
+
+@app.command()
+def test(
+    project_path: str = typer.Argument(..., help="Path to project to test"),
+    verbose: bool = typer.Option(False, "--verbose", help="Verbose output"),
+) -> None:
+    """Run integration tests on generated project"""
+    with handle_cli_errors():
+        TestCommands.test(project_path, verbose)
+
+
+@app.command()
+def scan(
     project_path: str = typer.Argument(
         ".",
-        help="Path to the DevOps project to analyze"
+        help="Path to project to scan for dependencies"
+    ),
+    export: Optional[str] = typer.Option(
+        None,
+        "--export",
+        help="Export report to file (e.g., report.json, report.yaml)"
+    ),
+    format: str = typer.Option(
+        "json",
+        "--format",
+        help="Export format: json or yaml"
     ),
     detailed: bool = typer.Option(
         False,
         "--detailed",
-        help="Show detailed file-by-file analysis"
-    ),
+        help="Show detailed dependency information"
+    )
 ) -> None:
-    """Show detailed information and statistics about a DevOps project"""
-    project_path = Path(project_path).resolve()
-    
-    if not project_path.exists():
-        console.print(f"[red]❌ Project path '{project_path}' does not exist[/red]")
-        raise typer.Exit(1)
-    
-    console.print(Panel.fit(
-        "[bold blue]📊 Project Information[/bold blue]\n"
-        "[dim]Detailed analysis of DevOps project structure and components[/dim]",
-        border_style="blue"
-    ))
-    
-    # Gather project information
-    project_stats = _analyze_project(project_path, detailed)
-    
-    # Display results
-    _display_project_info(project_stats, detailed)
-
-
-def _analyze_project(project_path: Path, detailed: bool) -> dict:
-    """Analyze the project and return comprehensive statistics"""
-    stats = {
-        "project_name": project_path.name,
-        "project_path": project_path,
-        "total_size": 0,
-        "file_count": 0,
-        "directory_count": 0,
-        "components": {
-            "ci_cd": {"files": [], "size": 0, "platforms": []},
-            "infrastructure": {"files": [], "size": 0, "tools": []},
-            "deployment": {"files": [], "size": 0, "methods": []},
-            "monitoring": {"files": [], "size": 0, "types": []},
-            "security": {"files": [], "size": 0, "levels": []},
-            "containers": {"files": [], "size": 0},
-            "kubernetes": {"files": [], "size": 0},
-            "scripts": {"files": [], "size": 0},
-        },
-        "languages": {},
-        "file_types": {},
-        "largest_files": [],
-        "recent_files": [],
-        "devops_score": 0,
-        "recommendations": []
-    }
-    
-    try:
-        # Analyze all files and directories
-        for item in project_path.rglob("*"):
-            if item.is_file():
-                file_size = item.stat().st_size
-                relative_path = item.relative_to(project_path)
-                file_ext = item.suffix.lower()
-                
-                stats["file_count"] += 1
-                stats["total_size"] += file_size
-                
-                # Track file types
-                if file_ext:
-                    stats["file_types"][file_ext] = stats["file_types"].get(file_ext, 0) + 1
-                
-                # Track programming languages
-                if file_ext in [".py", ".js", ".ts", ".go", ".java", ".rs", ".rb", ".php"]:
-                    stats["languages"][file_ext] = stats["languages"].get(file_ext, 0) + 1
-                
-                # Categorize DevOps components
-                category = _categorize_file(relative_path)
-                if category:
-                    comp = stats["components"][category]
-                    comp["files"].append(relative_path)
-                    comp["size"] += file_size
-                    
-                    # Extract specific tool/platform info
-                    if category == "ci_cd":
-                        if "github" in str(relative_path).lower():
-                            comp["platforms"].append("GitHub Actions")
-                        elif "gitlab" in str(relative_path).lower():
-                            comp["platforms"].append("GitLab CI")
-                        elif "jenkins" in str(relative_path).lower():
-                            comp["platforms"].append("Jenkins")
-                    
-                    elif category == "infrastructure":
-                        if "terraform" in str(relative_path).lower():
-                            comp["tools"].append("Terraform")
-                        elif "cloudformation" in str(relative_path).lower():
-                            comp["tools"].append("CloudFormation")
-                    
-                    elif category == "deployment":
-                        if "docker" in str(relative_path).lower():
-                            comp["methods"].append("Docker")
-                        elif "k8s" in str(relative_path).lower() or "kubernetes" in str(relative_path).lower():
-                            comp["methods"].append("Kubernetes")
-                
-                # Track largest files
-                if len(stats["largest_files"]) < 10:
-                    stats["largest_files"].append((relative_path, file_size))
-                else:
-                    stats["largest_files"].sort(key=lambda x: x[1], reverse=True)
-                    if file_size > stats["largest_files"][-1][1]:
-                        stats["largest_files"][-1] = (relative_path, file_size)
-                
-                # Track recent files (by modification time)
-                if len(stats["recent_files"]) < 10:
-                    stats["recent_files"].append((relative_path, item.stat().st_mtime))
-                else:
-                    stats["recent_files"].sort(key=lambda x: x[1], reverse=True)
-                    if item.stat().st_mtime > stats["recent_files"][-1][1]:
-                        stats["recent_files"][-1] = (relative_path, item.stat().st_mtime)
-            
-            elif item.is_dir() and item != project_path:
-                stats["directory_count"] += 1
-        
-        # Calculate DevOps maturity score
-        stats["devops_score"] = _calculate_devops_score(stats["components"])
-        
-        # Generate recommendations
-        stats["recommendations"] = _generate_recommendations(stats)
-        
-        # Sort lists for display
-        stats["largest_files"].sort(key=lambda x: x[1], reverse=True)
-        stats["recent_files"].sort(key=lambda x: x[1], reverse=True)
-    
-    except Exception as e:
-        console.print(f"[yellow]⚠️  Error analyzing project: {str(e)}[/yellow]")
-    
-    return stats
-
-
-def _categorize_file(file_path: Path) -> Optional[str]:
-    """Categorize a file into DevOps components"""
-    path_str = str(file_path).lower()
-    
-    if "ci" in path_str or any(x in path_str for x in ["github", "gitlab", "jenkins"]):
-        return "ci_cd"
-    elif "infra" in path_str or any(x in path_str for x in ["terraform", "cloudformation"]):
-        return "infrastructure"
-    elif "deploy" in path_str or any(x in path_str for x in ["dockerfile", "docker-compose", "k8s", "kubernetes"]):
-        return "deployment"
-    elif "monitoring" in path_str or any(x in path_str for x in ["prometheus", "grafana", "alert", "metric", "log"]):
-        return "monitoring"
-    elif "security" in path_str or any(x in path_str for x in ["vault", "secret", "scan", "policy"]):
-        return "security"
-    elif "container" in path_str or "dockerfile" in path_str:
-        return "containers"
-    elif "k8s" in path_str or "kubernetes" in path_str:
-        return "kubernetes"
-    elif "script" in path_str or file_path.suffix in [".sh", ".py", ".bat"]:
-        return "scripts"
-    
-    return None
-
-
-def _calculate_devops_score(components: dict) -> int:
-    """Calculate a DevOps maturity score based on components present"""
-    score = 0
-    max_score = 100
-    
-    # Base scores for each component category
-    category_scores = {
-        "ci_cd": 20,
-        "infrastructure": 15,
-        "deployment": 20,
-        "monitoring": 15,
-        "security": 15,
-        "containers": 10,
-        "kubernetes": 5,
-    }
-    
-    for category, weight in category_scores.items():
-        comp = components.get(category, {})
-        if comp["files"]:
-            # Give partial credit based on number of files
-            file_count = len(comp["files"])
-            category_score = min(weight, weight * (file_count / 3))  # Max score at 3+ files
-            score += int(category_score)
-    
-    return min(score, max_score)
-
-
-def _generate_recommendations(stats: dict) -> list:
-    """Generate recommendations based on project analysis"""
-    recommendations = []
-    
-    # Check for missing components
-    components = stats["components"]
-    
-    if not components["ci_cd"]["files"]:
-        recommendations.append("🔄 Add CI/CD pipelines for automated testing and deployment")
-    
-    if not components["infrastructure"]["files"]:
-        recommendations.append("🏗️  Add Infrastructure as Code (Terraform/CloudFormation)")
-    
-    if not components["monitoring"]["files"]:
-        recommendations.append("📊 Add monitoring and observability (logs, metrics, alerts)")
-    
-    if not components["security"]["files"]:
-        recommendations.append("🔒 Add security scanning and policies")
-    
-    if not components["containers"]["files"] and not components["kubernetes"]["files"]:
-        recommendations.append("🐳 Consider containerization with Docker")
-    
-    # Check for optimization opportunities
-    if stats["total_size"] > 50 * 1024 * 1024:  # > 50MB
-        recommendations.append("📦 Consider optimizing large files or using .gitignore")
-    
-    if len(stats["languages"]) > 5:
-        recommendations.append("🔧 Consider standardizing on fewer programming languages")
-    
-    # DevOps score based recommendations
-    if stats["devops_score"] < 40:
-        recommendations.append("🚀 Your project is in early DevOps adoption - consider adding more automation")
-    elif stats["devops_score"] < 70:
-        recommendations.append("⚡ Good DevOps foundation - consider advanced monitoring and security")
-    else:
-        recommendations.append("🎉 Excellent DevOps maturity! Consider sharing your practices")
-    
-    return recommendations
-
-
-def _display_project_info(stats: dict, detailed: bool) -> None:
-    """Display comprehensive project information"""
-    # Basic stats
-    console.print(f"\n[bold]📋 Project Overview:[/bold]")
-    console.print(f"  Name: {stats['project_name']}")
-    console.print(f"  Path: {stats['project_path']}")
-    console.print(f"  Size: {stats['total_size'] / (1024*1024):.2f} MB")
-    console.print(f"  Files: {stats['file_count']}")
-    console.print(f"  Directories: {stats['directory_count']}")
-    console.print(f"  DevOps Maturity Score: {stats['devops_score']}/100")
-    
-    # DevOps components
-    console.print(f"\n[bold]🔧 DevOps Components:[/bold]")
-    for comp_name, comp_data in stats["components"].items():
-        if comp_data["files"]:
-            comp_display = comp_name.replace("_", "-").title()
-            console.print(f"  {comp_display}: {len(comp_data['files'])} files ({comp_data['size'] / 1024:.1f} KB)")
-            
-            # Show specific tools/platforms
-            if comp_name == "ci_cd" and comp_data["platforms"]:
-                platforms = list(set(comp_data["platforms"]))
-                console.print(f"    Platforms: {', '.join(platforms)}")
-            elif comp_name == "infrastructure" and comp_data["tools"]:
-                tools = list(set(comp_data["tools"]))
-                console.print(f"    Tools: {', '.join(tools)}")
-            elif comp_name == "deployment" and comp_data["methods"]:
-                methods = list(set(comp_data["methods"]))
-                console.print(f"    Methods: {', '.join(methods)}")
-    
-    # Languages and file types
-    if stats["languages"]:
-        console.print(f"\n[bold]💻 Programming Languages:[/bold]")
-        for lang, count in sorted(stats["languages"].items(), key=lambda x: x[1], reverse=True):
-            lang_name = lang[1:].upper()  # Remove dot and capitalize
-            console.print(f"  {lang_name}: {count} files")
-    
-    if stats["file_types"]:
-        console.print(f"\n[bold]📄 File Types:[/bold]")
-        for ftype, count in sorted(stats["file_types"].items(), key=lambda x: x[1], reverse=True)[:10]:
-            console.print(f"  {ftype or 'no extension'}: {count} files")
-    
-    # Recommendations
-    if stats["recommendations"]:
-        console.print(f"\n[bold]💡 Recommendations:[/bold]")
-        for rec in stats["recommendations"]:
-            console.print(f"  {rec}")
-    
-    # Detailed analysis
-    if detailed:
-        console.print(f"\n[bold]🔍 Detailed Analysis:[/bold]")
-        
-        if stats["largest_files"]:
-            console.print(f"\n[dim]Largest files:[/dim]")
-            for file_path, size in stats["largest_files"][:5]:
-                console.print(f"  {file_path} ({size / 1024:.1f} KB)")
-        
-        if stats["recent_files"]:
-            console.print(f"\n[dim]Recently modified files:[/dim]")
-            for file_path, mtime in stats["recent_files"][:5]:
-                import datetime
-                mod_time = datetime.datetime.fromtimestamp(mtime)
-                console.print(f"  {file_path} ({mod_time.strftime('%Y-%m-%d %H:%M')})")
+    """Scan project dependencies and security vulnerabilities"""
+    with handle_cli_errors():
+        ScanCommands.scan(project_path, export, format, detailed)
 
 
 @app.command()
-def template(
+def multi_env(
+    project_path: str = typer.Argument(
+        ".",
+        help="Path to project for multi-environment configuration"
+    ),
+    environments: str = typer.Option(
+        "dev,stage,prod",
+        "--envs",
+        help="Comma-separated list of environments (e.g., dev,stage,prod)"
+    ),
+    config_type: str = typer.Option(
+        "full",
+        "--type",
+        help="Configuration type: basic, kubernetes, docker, full"
+    ),
+    with_secrets: bool = typer.Option(
+        False,
+        "--with-secrets",
+        help="Generate secrets templates"
+    )
+) -> None:
+    """Generate multi-environment configurations with inheritance"""
+    with handle_cli_errors():
+        MultiEnvCommands.multi_env(project_path, environments, config_type, with_secrets)
+
+
+@app.command()
+def backup(
     action: str = typer.Argument(
-        "list",
-        help="Action: list, create, customize, or export"
+        "create",
+        help="Action: create, restore, or list"
     ),
-    template_name: Optional[str] = typer.Option(
-        None,
-        "--name",
-        help="Template name for create/customize actions"
+    project_path: str = typer.Argument(
+        ".",
+        help="Path to the DevOps project"
     ),
-    output_dir: Optional[str] = typer.Option(
+    backup_file: Optional[str] = typer.Option(
         None,
-        "--output",
-        help="Output directory for exported templates"
+        "--file",
+        help="Backup file path for restore action"
+    ),
+    include_config: bool = typer.Option(
+        True,
+        "--include-config/--no-config",
+        help="Include configuration files in backup"
+    ),
+    compress: bool = typer.Option(
+        True,
+        "--compress/--no-compress",
+        help="Compress backup file"
     ),
 ) -> None:
-    """Manage and customize project templates"""
-    if action == "list":
-        _list_available_templates()
-    elif action == "create":
-        if not template_name:
-            console.print("[red]❌ Template name required for create action[/red]")
-            console.print("[yellow]Usage: devops-project-generator template create --name <template-name>[/yellow]")
-            raise typer.Exit(1)
-        _create_custom_template(template_name)
-    elif action == "customize":
-        if not template_name:
-            console.print("[red]❌ Template name required for customize action[/red]")
-            console.print("[yellow]Usage: devops-project-generator template customize --name <template-name>[/yellow]")
-            raise typer.Exit(1)
-        _customize_template(template_name)
-    elif action == "export":
-        if not output_dir:
-            console.print("[red]❌ Output directory required for export action[/red]")
-            console.print("[yellow]Usage: devops-project-generator template export --output <directory>[/yellow]")
-            raise typer.Exit(1)
-        _export_templates(output_dir)
-    else:
-        console.print(f"[red]❌ Unknown action: {action}[/red]")
-        console.print("[yellow]Available actions: list, create, customize, export[/yellow]")
-        raise typer.Exit(1)
+    """Create and restore project backups"""
+    with handle_cli_errors():
+        BackupCommands.backup(action, project_path, backup_file, include_config, compress)
+
+
+@app.command()
+def profile(
+    action: str = typer.Argument(..., help="Action: save, load, list, delete"),
+    name: Optional[str] = typer.Option(None, "--name", help="Profile name"),
+    file: Optional[str] = typer.Option(None, "--file", help="Profile file path"),
+) -> None:
+    """Manage project configuration profiles"""
+    with handle_cli_errors():
+        ProfileCommands.profile(action, name, file)
+
+
+@app.command()
+def version() -> None:
+    """Show version information"""
+    try:
+        from . import __version__
+    except ImportError:
+        __version__ = "1.6.0"
+    console.print(f"[bold blue]DevOps Project Generator[/bold blue] v{__version__}")
+
+
+@app.command()
+def list_options() -> None:
+    """List all available options"""
+    from .utils import format_file_size
+    
+    console.print(Panel.fit(
+        "[bold blue]📋 Available Options[/bold blue]",
+        border_style="blue"
+    ))
+    
+    # Pipeline Framework Options
+    console.print("\n[bold]🔄 Pipeline Frameworks:[/bold]")
+    pipeline_table = Table()
+    pipeline_table.add_column("Option", style="cyan")
+    pipeline_table.add_column("Description")
+    pipeline_table.add_row("nodejs-typescript", "Node.js + TypeScript pipelines")
+    pipeline_table.add_row("python", "Python application pipelines")
+    pipeline_table.add_row("java-maven", "Enterprise Java pipelines")
+    pipeline_table.add_row("go", "Go application pipelines")
+    pipeline_table.add_row("docker-multistage", "Containerized application pipelines")
+    pipeline_table.add_row("terraform-module", "Infrastructure module pipelines")
+    pipeline_table.add_row("kubernetes-operator", "Kubernetes operator pipelines")
+    pipeline_table.add_row("microservice", "Microservice architecture pipelines")
+    console.print(pipeline_table)
+    
+    # CI/CD Options
+    console.print("\n[bold]🔄 CI/CD Platforms:[/bold]")
+    ci_table = Table()
+    ci_table.add_column("Option", style="cyan")
+    ci_table.add_column("Description")
+    ci_table.add_row("github-actions", "GitHub Actions workflows")
+    ci_table.add_row("gitlab-ci", "GitLab CI/CD pipelines")
+    ci_table.add_row("jenkins", "Jenkins pipeline files")
+    ci_table.add_row("azure-pipelines", "Azure DevOps pipelines")
+    ci_table.add_row("gitlab-runners", "GitLab Runners")
+    ci_table.add_row("none", "No CI/CD")
+    console.print(ci_table)
+    
+    # Infrastructure Options
+    console.print("\n[bold]☁️ Infrastructure Patterns:[/bold]")
+    infra_table = Table()
+    infra_table.add_column("Option", style="cyan")
+    infra_table.add_column("Description")
+    infra_table.add_row("aws-vpc-eks", "Amazon EKS with VPC networking")
+    infra_table.add_row("azure-vnet-aks", "Azure AKS with virtual networking")
+    infra_table.add_row("gcp-vpc-gke", "Google GKE with VPC networking")
+    infra_table.add_row("multicloud-terraform", "Cross-cloud infrastructure")
+    infra_table.add_row("kubernetes-onprem", "On-premises Kubernetes")
+    infra_table.add_row("aws-ecs-fargate", "Serverless container orchestration")
+    infra_table.add_row("ansible-automation", "Configuration management")
+    console.print(infra_table)
+    
+    # Deployment Options
+    console.print("\n[bold]🚀 Deployment Strategies:[/bold]")
+    deploy_table = Table()
+    deploy_table.add_column("Option", style="cyan")
+    deploy_table.add_column("Description")
+    deploy_table.add_row("blue-green", "Zero-downtime deployments")
+    deploy_table.add_row("canary", "Gradual rollout deployments")
+    deploy_table.add_row("rolling", "Incremental updates")
+    deploy_table.add_row("gitops-argocd", "Git-based continuous deployment")
+    deploy_table.add_row("helm-charts", "Kubernetes package management")
+    deploy_table.add_row("kustomize", "Kubernetes configuration management")
+    deploy_table.add_row("serverless-lambda", "AWS Lambda deployments")
+    console.print(deploy_table)
+    
+    # Environment Options
+    console.print("\n[bold]🌍 Environment Options:[/bold]")
+    env_table = Table()
+    env_table.add_column("Option", style="cyan")
+    env_table.add_column("Description")
+    env_table.add_row("single", "Single environment")
+    env_table.add_row("dev", "Development environment")
+    env_table.add_row("dev,stage,prod", "Multi-environment setup")
+    console.print(env_table)
+    
+    # Observability Options
+    console.print("\n[bold]📊 Observability Stacks:[/bold]")
+    obs_table = Table()
+    obs_table.add_column("Option", style="cyan")
+    obs_table.add_column("Description")
+    obs_table.add_row("prometheus-grafana", "Metrics and visualization")
+    obs_table.add_row("elk-stack", "Elasticsearch, Logstash, Kibana")
+    obs_table.add_row("datadog", "Full-stack monitoring")
+    obs_table.add_row("jaeger-prometheus", "Distributed tracing and metrics")
+    obs_table.add_row("cloudwatch", "AWS native monitoring")
+    obs_table.add_row("new-relic", "Application performance monitoring")
+    console.print(obs_table)
+    
+    # Security Options
+    console.print("\n[bold]🔒 Security Frameworks:[/bold]")
+    sec_table = Table()
+    sec_table.add_column("Option", style="cyan")
+    sec_table.add_column("Description")
+    sec_table.add_row("nist-csf", "NIST Cybersecurity Framework")
+    sec_table.add_row("cis-benchmarks", "Center for Internet Security controls")
+    sec_table.add_row("zero-trust", "Zero Trust Architecture")
+    sec_table.add_row("soc2", "Service Organization Control 2")
+    sec_table.add_row("gdpr", "General Data Protection Regulation")
+    sec_table.add_row("hipaa", "Health Insurance Portability and Accountability Act")
+    console.print(sec_table)
 
 
 def _list_available_templates() -> None:
@@ -2582,144 +1815,6 @@ def _display_health_score(report: dict) -> None:
             console.print(f"  {rec}")
 
 
-@app.command()
-def template(
-    action: str = typer.Argument(..., help="Action: list, create, customize"),
-    category: Optional[str] = typer.Option(None, "--category", help="Template category"),
-    name: Optional[str] = typer.Option(None, "--name", help="Template name"),
-) -> None:
-    """Manage and customize project templates"""
-    try:
-        if action == "list":
-            _list_templates(category)
-        elif action == "create":
-            if not category or not name:
-                console.print("[red]❌ --category and --name required for create action[/red]")
-                raise typer.Exit(1)
-            _create_template(category, name)
-        elif action == "customize":
-            if not category or not name:
-                console.print("[red]❌ --category and --name required for customize action[/red]")
-                raise typer.Exit(1)
-            _customize_template(category, name)
-        else:
-            console.print(f"[red]❌ Unknown action: {action}[/red]")
-            console.print("[yellow]Available actions: list, create, customize[/yellow]")
-            raise typer.Exit(1)
-    except Exception as e:
-        logger.error(f"Template management error: {str(e)}")
-        console.print(f"[red]❌ Error: {str(e)}[/red]")
-        raise typer.Exit(1)
-
-
-def _list_templates(category: Optional[str] = None) -> None:
-    """List available templates"""
-    from generator.config import TemplateConfig
-    
-    template_config = TemplateConfig()
-    template_path = template_config.template_path
-    
-    console.print(Panel.fit(
-        "[bold blue]📋 Available Templates[/bold blue]",
-        border_style="blue"
-    ))
-    
-    if category:
-        categories = [category]
-    else:
-        categories = ["ci", "infra", "deploy", "monitoring", "security", "app", "scripts"]
-    
-    for cat in categories:
-        cat_path = template_path / cat
-        if cat_path.exists():
-            templates = list(cat_path.glob("*.j2"))
-            if templates:
-                console.print(f"\n[bold cyan]{cat.title()} Templates:[/bold cyan]")
-                for template in sorted(templates):
-                    size = template.stat().st_size
-                    console.print(f"  📄 {template.name} ({format_file_size(size)})")
-        else:
-            if category:
-                console.print(f"[yellow]⚠️  Category '{category}' not found[/yellow]")
-
-
-def _create_template(category: str, name: str) -> None:
-    """Create a new template"""
-    from generator.config import TemplateConfig
-    
-    template_config = TemplateConfig()
-    template_path = template_config.template_path / category
-    
-    if not template_path.exists():
-        template_path.mkdir(parents=True, exist_ok=True)
-        console.print(f"[green]✅ Created category: {category}[/green]")
-    
-    template_file = template_path / f"{name}.j2"
-    
-    if template_file.exists():
-        if not typer.confirm(f"Template '{name}.j2' already exists. Overwrite?"):
-            console.print("[dim]Operation cancelled.[/dim]")
-            return
-    
-    # Create a basic template
-    template_content = f"""# Template: {category}/{name}
-# Generated by DevOps Project Generator
-# Created: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-{{%- if project_name -%}}
-# Project: {{ project_name }}
-{{%- endif -%}}
-
-# Add your template content here
-# Available variables:
-# {{%- for var in ['project_name', 'project_name_upper', 'project_name_slug', 'environments', 'ci', 'infra', 'deploy', 'observability', 'security'] -%}}
-# {{{{ var }}}}
-# {{%- endfor -%}}
-
-"""
-    
-    with open(template_file, 'w', encoding='utf-8') as f:
-        f.write(template_content)
-    
-    console.print(f"[green]✅ Template created: {template_file}[/green]")
-    console.print("[yellow]💡 Edit the file to customize your template[/yellow]")
-
-
-def _customize_template(category: str, name: str) -> None:
-    """Customize an existing template"""
-    from generator.config import TemplateConfig
-    
-    template_config = TemplateConfig()
-    template_file = template_config.template_path / category / f"{name}.j2"
-    
-    if not template_file.exists():
-        console.print(f"[red]❌ Template not found: {category}/{name}.j2[/red]")
-        raise typer.Exit(1)
-    
-    console.print(f"[blue]📝 Editing template: {category}/{name}.j2[/blue]")
-    
-    # Show current content
-    with open(template_file, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    console.print(Panel.fit(
-        content[:500] + "..." if len(content) > 500 else content,
-        title=f"Current Template Content",
-        border_style="cyan"
-    ))
-    
-    console.print("\n[yellow]💡 To edit this template, open the file directly:[/yellow]")
-    console.print(f"   {template_file}")
-    
-    # Show available variables
-    console.print("\n[bold]Available template variables:[/bold]")
-    variables = [
-        "project_name", "project_name_upper", "project_name_slug",
-        "environments", "ci", "infra", "deploy", "observability", "security",
-        "has_ci", "has_infra", "has_docker", "has_kubernetes", "env_count", "is_multi_env"
-    ]
-    for var in variables:
-        console.print(f"  • {{{{ {var} }}}}")
 
 
 @app.command()
